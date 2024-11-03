@@ -11,18 +11,17 @@ import evaluate
 import utils
 
 zero_shot_classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
-
-
 #nltk.download('punkt')
-
-malt_dataset_path = "/Users/sravanimalla/Documents/GitHub/long_tail_kbc/MALT/malt_subset.txt"
+malt_dataset_path = "/Users/sravanimalla/Documents/GitHub/long_tail_kbc/MALT/malt_eval.txt"
 hold_out_dataset_path = "/Users/sravanimalla/Documents/GitHub/long_tail_kbc/MALT/malt_hold_out.txt"
 qa_model = "mrm8488/spanbert-finetuned-squadv2"
+#qa_model = "deepset/bert-base-cased-squad2"
 wikipedia_dataset = "/Users/sravanimalla/Documents/GitHub/long_tail_kbc/MALT/wikipedia.json"
+wikipedia_subset_dataset = "/Users/sravanimalla/Documents/GitHub/long_tail_kbc/MALT/wikipedia_subset.json"
 gold_path = "/Users/sravanimalla/Documents/GitHub/long_tail_kbc/MALT/gold_wikidata.json"
-
 output_path = "/Users/sravanimalla/Documents/GitHub/long_tail_kbc/MALT/extracted_facts.txt"
 score_path = "/Users/sravanimalla/Documents/GitHub/long_tail_kbc/MALT/score.txt" 
+score_path_zs = "/Users/sravanimalla/Documents/GitHub/long_tail_kbc/MALT/score_zs.txt"
 output_path_zs = "/Users/sravanimalla/Documents/GitHub/long_tail_kbc/MALT/extracted_facts_zeroshot.txt"
 
 top_k = 10 
@@ -82,16 +81,13 @@ model_for_candidate = pipeline(task='question-answering', model=model_name, toke
 def run_on_malt():
     f = open(output_path, 'w', encoding='utf8')
     print("inside run on malt")
-
     wiki_pages = utils.load_wiki_page(path=wikipedia_dataset)
-
     for relation_type in template.candidate_templates.keys():
         file_type = template.file_names[relation_type]
-
         cnt = 0
         for index, name in enumerate(wiki_pages):
             print(index,name)
-
+            break
             wp_page = wiki_pages[name]
             e_type = wp_page['type']
             if e_type != file_type: continue
@@ -99,7 +95,6 @@ def run_on_malt():
             page_content = wp_page['wikipage']
             print('processing {a} lines'.format(a=cnt))
             print('process name = {a} ......'.format(a=name))
-
             predict_result = set()
             page_contents = nltk.sent_tokenize(page_content)
             for page_content in page_contents:
@@ -114,16 +109,19 @@ def run_on_malt():
                     sentence = page_content
                     corroborated_results = corroboration.genre_predict((name, can_name), sentence[:max_len], top_k=top_k, num_beams=top_k,
                                                              templates=template.corroboration_templates[relation_type])
+                    print("Inside corroboration function --------")                
+                    print(corroborated_results)
                     corroborated_results = dict([(n, math.exp(v)) for n, v in corroborated_results])
-
+                    print(corroborated_results)
+                    print("--------------------------------------")
                     for sr in corroborated_results:
+                        print("inside for loop")
+                        print(sr)
                         clean_sr = utils.clean_genre(sr)
+                        print(clean_sr)
                         if can_name != clean_sr: continue
-
                         if clean_sr in predict_result:continue
                         predict_result.add(clean_sr)
-
-
                         ed_score = corroborated_results[sr]
                         avg_score = 0.5 * (qa_score + ed_score)
                         w_l = name + '\t' + clean_sr + '\t' + relation_type + '\t' + str(
@@ -133,77 +131,78 @@ def run_on_malt():
                         f.write(w_l)
                         f.flush()
 
-
 def run_on_malt_zs():
     f = open(output_path_zs, 'w', encoding='utf8')
-    print("inside run on malt")
-
     wiki_pages = utils.load_wiki_page(path=wikipedia_dataset)
 
-    for relation_type in template.candidate_templates.keys():
+    for relation_type, templates in template.candidate_templates.items():
         file_type = template.file_names[relation_type]
-
+        print(relation_type, file_type)
         cnt = 0
-        for index, name in enumerate(wiki_pages):
-            print(index, name)
 
+        for index, name in enumerate(wiki_pages):
             wp_page = wiki_pages[name]
             e_type = wp_page['type']
-            if e_type != file_type: continue
+            if e_type != file_type:
+                continue  # Skip if entity type doesn't match
+
             cnt += 1
             page_content = wp_page['wikipage']
-            print('processing {a} lines'.format(a=cnt))
-            print('process name = {a} ......'.format(a=name))
+            print(f'Processing {cnt} lines for entity {name}...')
 
             predict_result = set()
             page_contents = nltk.sent_tokenize(page_content)
-            for page_content in page_contents:
-                if len(page_content) < min_sen_len: continue
-                candidates = candidate_generation.generate(model_for_candidate, name, page_content, top_k=top_k,
-                                                  templates=template.candidate_templates[relation_type])
+
+            for sentence in page_contents:
+                if len(sentence) < min_sen_len:
+                    continue  # Skip short sentences
+
+                # Format the candidate labels with the name
+                candidate_labels = [t.format(a=name) for t in templates]
+
+                # Generate candidates
+                candidates = candidate_generation.generate(model_for_candidate, name, sentence, top_k=top_k, templates=templates)
+
+                # Zero-shot classification for corroboration
+                classification = zero_shot_classifier(
+                    sequences=sentence,
+                    candidate_labels=candidate_labels,
+                    hypothesis_template="The text implies {}"
+                )
+                zero_shot_score = max(classification["scores"])  # Use highest confidence score
 
                 for can_name in candidates:
-                    if len(can_name) < min_can_name_len: continue
-                    if utils.filter(can_name): continue
+                    if len(can_name) < min_can_name_len or utils.filter(can_name):
+                        continue  # Skip candidates based on length and filtering
+
                     qa_score, start, end = candidates[can_name]
-                    sentence = page_content
-                    
-                    # Use corroboration as before
-                    corroborated_results = corroboration.genre_predict((name, can_name), sentence[:max_len], top_k=top_k, num_beams=top_k,
-                                                             templates=template.corroboration_templates[relation_type])
-                    corroborated_results = dict([(n, math.exp(v)) for n, v in corroborated_results])
+
+                    # Corroborate with genre prediction
+                    corroborated_results = corroboration.genre_predict(
+                        (name, can_name), sentence[:max_len], top_k=top_k, num_beams=top_k,
+                        templates=template.corroboration_templates[relation_type]
+                    )
+                    corroborated_results = {n: math.exp(v) for n, v in corroborated_results}
 
                     for sr in corroborated_results:
                         clean_sr = utils.clean_genre(sr)
-                        if can_name != clean_sr: continue
+                        if can_name != clean_sr or clean_sr in predict_result:
+                            continue  # Skip if candidate already added
 
-                        if clean_sr in predict_result: continue
                         predict_result.add(clean_sr)
-
                         ed_score = corroborated_results[sr]
 
-                        # Apply zero-shot learning to classify the relationship
-                        candidate_labels = ["collaborator", "enemy", "friend", "teammate", "colleague"]
-                        zero_shot_result = zero_shot_classifier(f"{name} has a {relation_type} with {clean_sr}.", candidate_labels)
-                        zero_shot_score = zero_shot_result['scores'][0]  # Confidence score for the top label
-                        predicted_label = zero_shot_result['labels'][0]
-
-                        print(f"Zero-shot label: {predicted_label} with confidence: {zero_shot_score}")
-                        
                         # Combine QA score, corroboration score, and zero-shot score
-                        combined_score = 0.4 * qa_score + 0.4 * ed_score + 0.2 * zero_shot_score
-                        
-                        # Write the result to the file
-                        w_l = name + '\t' + clean_sr + '\t' + relation_type + '\t' + str(
-                            round(combined_score, 8)) + '\t' + str(
-                            round(qa_score, 8)) + '\t' + str(
-                            round(ed_score, 8)) + '\t' + str(
-                            round(zero_shot_score, 8)) + '\t' + sentence + '\n'
-                        
+                        combined_score_zs = 0.4 * qa_score + 0.3 * ed_score + 0.3 * zero_shot_score
+                        w_l = f"{name}\t{clean_sr}\t{relation_type}\t{round(combined_score_zs, 8)}\t" \
+                              f"{round(qa_score, 8)}\t{round(ed_score, 8)}\t{sentence}\n"
+
+                        # Batch write
                         f.write(w_l)
                         f.flush()
 
     f.close()
+
 
 def run_example_zero_shot():
     doc = """
@@ -213,42 +212,40 @@ def run_example_zero_shot():
         with Patrick Watson was released. 
     """
     name = 'Lhasa de Sela'
+    # Generate candidate names using zero-shot classification to improve relevance
     candidates = candidate_generation.generate(model_for_candidate, name, doc, top_k=top_k,
                                                templates=['the person collaborated with which person?'])
-
-    for candidate in candidates:
-        if len(candidate) < min_can_name_len: continue
-        if utils.filter(candidate): continue
-        qa_score, start, end = candidates[candidate]
-        #print(f"Candidate: {candidate}, QA Score: {qa_score}")
-
-        # Apply zero-shot classification to assess candidate confidence
-        candidate_labels = ["collaborator", "friend", "artist", "musician"]
-        zero_shot_results = zero_shot_classifier(f"{name} collaborated with {candidate}.", candidate_labels)
-        
-        # Get the score for the top prediction
-        zero_shot_score = zero_shot_results['scores'][0]  # Confidence score of the top label
-        predicted_label = zero_shot_results['labels'][0]  # Top predicted label
-        #print(f"Zero-shot Prediction: {predicted_label} with confidence: {zero_shot_score}")
-
-        # Combine QA score with zero-shot score
-        combined_score = (qa_score + zero_shot_score) / 2
-        #print(f"Combined Score for {candidate}: {combined_score}")
-
-        # Proceed with corroboration using the new combined score
+    
+    for can_name in candidates:
+       
+        if len(can_name) < min_can_name_len: continue
+        if utils.filter(can_name): continue
+        qa_score, start, end = candidates[can_name]
         sentence = doc
-        corroborated_results = corroboration.genre_predict((name, candidate), sentence[:max_len], top_k=top_k,
+        
+        # Apply zero-shot to enhance corroboration with refined prompt
+        corroborated_results = corroboration.genre_predict((name, can_name), sentence[:max_len], top_k=top_k,
                                                            num_beams=top_k,
                                                            templates=['the person {a} collaborated with [START_ENT] this person [END_ENT].'])
+        
         corroborated_results = dict([(n, math.exp(v)) for n, v in corroborated_results])
+
+        # Zero-shot scoring for candidate verification
+        classification = zero_shot_classifier(
+            sequences=doc,
+            candidate_labels=[f"{name} collaborated with {can_name}"],
+            hypothesis_template="The text implies {}"
+        )
+        zero_shot_score = max(classification["scores"])  # Get the highest score for the best label match
 
         for sr in corroborated_results:
             clean_sr = utils.clean_genre(sr)
-            if candidate != clean_sr: continue
+            if can_name != clean_sr: continue
 
+            # Adjusted average score with zero-shot confidence
             ed_score = corroborated_results[sr]
-            avg_score = (combined_score + ed_score) / 2  # Average with corroboration score
-            print(f'( {name}, collaborator, {sr}, {avg_score} )')
+            avg_score = 0.4 * qa_score + 0.3 * ed_score + 0.3 * zero_shot_score
+            print('( Lhasa de Sela, collaborator, ' + sr + ', ' + str(avg_score) +' )')
 
 def run_example():
     doc = """
@@ -260,20 +257,12 @@ def run_example():
     name = 'Lhasa de Sela'
     candidates = candidate_generation.generate(model_for_candidate, name, doc, top_k=top_k,
                                                templates=['the person colloborated with which person?'])
-    
-
-    
-   
-
     for can_name in candidates:
-        #print(can_name)
+        
         if len(can_name) < min_can_name_len: continue
         if utils.filter(can_name): continue
         qa_score, start, end = candidates[can_name]
-       
         sentence = doc
-       
-        
         corroborated_results = corroboration.genre_predict((name, can_name), sentence[:max_len], top_k=top_k,
                                                            num_beams=top_k,
                                                            templates=['the person {a} colloborated with [START_ENT] this person [END_ENT].'])
@@ -290,9 +279,11 @@ def run_example():
 
 
 if __name__ == '__main__':
-    print("Results without zero-shot-------------")
-    run_example()
-    print("Results with zero-shot -------------")
-    run_example_zero_shot()
-    #run_on_malt_zs()
-    #evaluate.run_eval([output_path_zs], score_path, malt_dataset_path, hold_out_dataset_path, gold_path)
+    #print("Results without zero-shot-------------")
+    #run_example()
+    #print("Results with zero-shot -------------")
+    #run_example_zero_shot()
+    run_on_malt_zs()
+    #evaluate.run_eval([output_path_zs], score_path_zs, malt_dataset_path, hold_out_dataset_path, gold_path)
+    #run_on_malt()
+    #evaluate.run_eval([output_path], score_path, malt_dataset_path, hold_out_dataset_path, gold_path)
