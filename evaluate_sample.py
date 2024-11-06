@@ -56,55 +56,56 @@ def evaluate(extracted_facts, gold_facts):
     index = 0
 
     for fact in extracted_facts:
-        print("processing fact:", index)
+        #print("---------------------------------------------------------------------")
+        #print("processing fact:", index)
         
         index += 1
-        print(fact)
+        #print(fact)
         name = fact["name"]
         relation = fact["relation"]
         extracted_tail_name = fact["fact"]
         confidence_score = fact["confidence"]
         average_score = (fact["qa_score"] + fact["ed_score"]) / 2
         final_score = max(confidence_score, average_score)  # Take the maximum between confidence and average score
+        final_score = confidence_score
         
         # If the final score is below the threshold, count it as a false negative and skip precision tasks
-        if final_score <= 0.2:
+        if final_score <= 0.3:
             fn += 1
-            print("It is FALSE NEGATIVE")
+            #print("It is FALSE NEGATIVE")
             continue 
         
         # Check if this name is in gold facts
         if name in gold_facts:
             matched = False
             for gold_fact in gold_facts[name]:
-                print("---Ground Truth Fact of it---------")
-                print(gold_fact)
+                #print("---Ground Truth Fact of it---------")
+                #print(gold_fact)
                 #(gold_fact["relation"])
                 #print(relation)
 
-                if gold_fact["relation"] in mapping[relation]:
-                    if extracted_tail_name in gold_fact["tail_qids"]:
+                if extracted_tail_name in gold_fact["tail_qids"]:
+                    tp += 1
+                    matched = True
+                    #print("It is TRUE POSITIVE")
+                    break
+                    
+                for gold_fact in gold_fact["tail_names"]:
+                    if extracted_tail_name in gold_fact:
                         tp += 1
                         matched = True
-                        print("It is TRUE POSITIVE")
+                        #print("It is TRUE POSITIVE")
                         break
-                        
-                    for gold_fact in gold_fact["tail_names"]:
-                        if extracted_tail_name in gold_fact:
-                            tp += 1
-                            matched = True
-                            print("It is TRUE POSITIVE")
-                            break
   
             if not matched:
-                print("It is FALSE POSITIVE")
+                #print("It is FALSE POSITIVE")
                 fp += 1
         else:
             fp += 1
 
     
-    print("<<<<<<<<<<<<<<<tp,fp,fn values>>>>>>>>>>>>>>>>>>")
-    print(tp,fn,fp)
+    #print("<<<<<<<<<<<<<<<tp,fp,fn values>>>>>>>>>>>>>>>>>>")
+    #print(tp,fn,fp)
 
     # Calculate precision, recall, and F1-score
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
@@ -117,6 +118,14 @@ def evaluate(extracted_facts, gold_facts):
 extracted_facts = load_extracted_facts('./MALT/extracted_facts.txt')
 gold_facts = load_gold_facts('./MALT/gold_wikidata.json')
 
+extracted_facts_zeroshot = load_extracted_facts('./MALT/extracted_facts_zeroshot.txt')
+
 # Evaluate and print results
+print("The Evaluation Metrics without zero-shot learning:")
 precision, recall, f1_score = evaluate(extracted_facts, gold_facts)
+print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1-Score: {f1_score:.4f}")
+
+print("The evaluation metrics with zero-shot learning:")
+
+precision, recall, f1_score = evaluate(extracted_facts_zeroshot, gold_facts)
 print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1-Score: {f1_score:.4f}")
