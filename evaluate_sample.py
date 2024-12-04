@@ -70,7 +70,7 @@ def evaluate(extracted_facts, gold_facts):
         final_score = confidence_score
         
         # If the final score is below the threshold, count it as a false negative and skip precision tasks
-        if final_score <= 0.3:
+        if confidence_score <= 0.4:
             fn += 1
             #print("It is FALSE NEGATIVE")
             continue 
@@ -115,15 +115,15 @@ def evaluate(extracted_facts, gold_facts):
     return precision, recall, f1_score
 
 # Load the data
-extracted_facts = load_extracted_facts('./MALT/extracted_facts.txt')
-gold_facts = load_gold_facts('./MALT/gold_wikidata.json')
+#extracted_facts = load_extracted_facts('./data//MALT/extracted_facts.txt')
+gold_facts = load_gold_facts('./data/MALT/gold_wikidata.json')
 
-extracted_facts_zeroshot = load_extracted_facts('./MALT/extracted_facts_zeroshot.txt')
+extracted_facts_zeroshot = load_extracted_facts('./data/MALT/extracted_facts_person_chunk_1000_zs.txt')
 
 # Evaluate and print results
-print("The Evaluation Metrics without zero-shot learning:")
-precision, recall, f1_score = evaluate(extracted_facts, gold_facts)
-print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1-Score: {f1_score:.4f}")
+#print("The Evaluation Metrics without zero-shot learning:")
+#precision, recall, f1_score = evaluate(extracted_facts, gold_facts)
+#print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1-Score: {f1_score:.4f}")
 
 print("The evaluation metrics with zero-shot learning:")
 
