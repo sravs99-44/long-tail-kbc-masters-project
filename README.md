@@ -81,7 +81,7 @@ After, you can get two files:
 ## Resource
 * [Paper](https://arxiv.org/pdf/2306.17472.pdf)
 * [Dataset](https://www.mpi-inf.mpg.de/departments/databases-and-information-systems/research/knowledge-base-recall/lm4kbc/malt)
-* [Code](https://github.com/tigerchen52/long_tail_kbc)
+
 
 ## Acknowledgements
 *This work was partially funded by ANR-20-CHIA0012-01 (“NoRDF”).*
