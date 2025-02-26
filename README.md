@@ -79,7 +79,7 @@ After, you can get two files:
 * `score.txt` stores the evaluation scores (precision, recall, and f1)
 
 ## Resource
-* [Paper](https://arxiv.org/pdf/2306.17472.pdf)
+
 * [Dataset](https://www.mpi-inf.mpg.de/departments/databases-and-information-systems/research/knowledge-base-recall/lm4kbc/malt)
 
 
